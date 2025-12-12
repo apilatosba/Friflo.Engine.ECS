@@ -235,9 +235,6 @@ public sealed class EntitySchema
             var newComponents = new ComponentType[newCapacity];
             Array.Copy(components, newComponents, components.Length);
             components = newComponents;
-            
-            // Update the static DefaultHeapMap as well
-            EntityStoreBase.Static.ResizeDefaultHeapMap(newCapacity);
         }
         
         // Determine if this is a relation type
@@ -274,6 +271,10 @@ public sealed class EntitySchema
         componentTypeByType.Add(componentType.Type, componentType);
         components[structIndex] = componentType;
         maxStructIndex++;
+        
+        // Always resize archetype heapMaps to accommodate the new maxStructIndex
+        // This is necessary because existing archetypes were created with the old maxStructIndex
+        EntityStoreBase.Static.ResizeArchetypeHeapMaps(maxStructIndex);
         
         // Update component type masks
         if (componentType.RelationType == null)

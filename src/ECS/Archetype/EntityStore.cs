@@ -123,6 +123,9 @@ public abstract partial class EntityStoreBase
         internal static             StructHeap[]    DefaultHeapMap  = new StructHeap[EntitySchema.InitialCapacity];
         private  static readonly    object          HeapMapLock     = new();
         
+        /// <summary>Tracks all EntityStoreBase instances for runtime type registration resizing</summary>
+        private  static readonly    List<WeakReference<EntityStoreBase>> AllStores = new();
+        
         /// <summary>The index of the <see cref="EntityStoreBase.defaultArchetype"/> - index is always 0</summary>
         internal const              int             DefaultArchIndex        =  0;
         
@@ -138,6 +141,20 @@ public abstract partial class EntityStoreBase
         internal const              int             SingleMax               = 32;
         
         /// <summary>
+        /// Registers an EntityStoreBase instance for runtime type registration tracking.
+        /// Uses WeakReference to allow stores to be garbage collected.
+        /// </summary>
+        internal static void RegisterStore(EntityStoreBase store)
+        {
+            lock (HeapMapLock)
+            {
+                // Cleanup dead references while we're here
+                AllStores.RemoveAll(wr => !wr.TryGetTarget(out _));
+                AllStores.Add(new WeakReference<EntityStoreBase>(store));
+            }
+        }
+        
+        /// <summary>
         /// Resizes the DefaultHeapMap when new component types are registered at runtime.
         /// </summary>
         internal static void ResizeDefaultHeapMap(int newCapacity)
@@ -150,6 +167,60 @@ public abstract partial class EntityStoreBase
                 var newHeapMap = new StructHeap[newCapacity];
                 Array.Copy(DefaultHeapMap, newHeapMap, DefaultHeapMap.Length);
                 DefaultHeapMap = newHeapMap;
+            }
+        }
+        
+        /// <summary>
+        /// Resizes all archetype heapMaps in all registered stores when new component types are registered at runtime.
+        /// </summary>
+        internal static void ResizeArchetypeHeapMaps(int newCapacity)
+        {
+            lock (HeapMapLock)
+            {
+                // Resize DefaultHeapMap first if needed
+                StructHeap[] newDefaultHeapMap = null;
+                if (newCapacity > DefaultHeapMap.Length)
+                {
+                    newDefaultHeapMap = new StructHeap[newCapacity];
+                    Array.Copy(DefaultHeapMap, newDefaultHeapMap, DefaultHeapMap.Length);
+                    DefaultHeapMap = newDefaultHeapMap;
+                }
+                
+                // Resize heapMaps in all existing archetypes
+                for (int i = AllStores.Count - 1; i >= 0; i--)
+                {
+                    if (!AllStores[i].TryGetTarget(out var store))
+                    {
+                        AllStores.RemoveAt(i);
+                        continue;
+                    }
+                    
+                    var archetypes = store.archs;
+                    var count = store.Archetypes.Length;
+                    
+                    // Update default archetype (index 0) to use the new DefaultHeapMap if it was resized
+                    if (newDefaultHeapMap != null && count > 0)
+                    {
+                        var defaultArch = archetypes[0];
+                        if (defaultArch != null)
+                        {
+                            defaultArch.heapMap = newDefaultHeapMap;
+                        }
+                    }
+                    
+                    // Resize non-default archetypes (archIndex > 0)
+                    for (int j = 1; j < count; j++)
+                    {
+                        var archetype = archetypes[j];
+                        if (archetype == null || archetype.heapMap.Length >= newCapacity)
+                            continue;
+                        
+                        var oldHeapMap = archetype.heapMap;
+                        var newHeapMap = new StructHeap[newCapacity];
+                        Array.Copy(oldHeapMap, newHeapMap, oldHeapMap.Length);
+                        archetype.heapMap = newHeapMap;
+                    }
+                }
             }
         }
     }
@@ -169,6 +240,7 @@ public abstract partial class EntityStoreBase
         internBase.createEntityBatches  = new StackArray<CreateEntityBatch> (Array.Empty<CreateEntityBatch>());
         internBase.entityLists          = new StackArray<EntityList>        (Array.Empty<EntityList>());
         singleIds                       = new int[Static.SingleMax];
+        Static.RegisterStore(this);
     }
     #endregion
     

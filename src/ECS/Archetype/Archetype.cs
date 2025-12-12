@@ -85,7 +85,7 @@ public sealed class Archetype
     [Browse(Never)] internal readonly   Tags                tags;           // 32   - tags assigned to archetype
     [Browse(Never)] internal readonly   ArchetypeKey        key;            //  8
     /// <remarks>Lookups on <see cref="heapMap"/>[] does not require a range check. See <see cref="EntitySchema.CheckStructIndex"/></remarks>
-    [Browse(Never)] internal readonly   StructHeap[]        heapMap;        //  8   - never null. Length always = maxStructIndex. Used for heap lookup
+    [Browse(Never)] internal            StructHeap[]        heapMap;        //  8   - never null. Length always >= maxStructIndex. Used for heap lookup
     [Browse(Never)] internal readonly   EntityStoreBase     store;          //  8   - containing EntityStoreBase
     [Browse(Never)] internal readonly   EntityStore         entityStore;    //  8   - containing EntityStore
     [Browse(Never)] internal readonly   int                 archIndex;      //  4   - archetype index in EntityStore.archs[]
